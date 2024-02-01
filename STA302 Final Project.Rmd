@@ -1,0 +1,252 @@
+---
+title: "STA302 Final Project"
+author: "Qiannan Zhao"
+output: pdf_document
+---
+
+```{r read data and split the dataset}
+bit <- read.csv(file="FinalDataset_Bit.csv", header=T)
+str(bit)
+# create a 50/50 split in the data
+set.seed(1)
+train <- bit[sample(1:nrow(bit),373, replace=F), ]
+test <- bit[which(!(bit$Time %in% train$Time)),]
+
+```
+
+
+```{r}
+mtr <- apply(train[,-c(1)], 2, mean)
+sdtr <- apply(train[,-c(1)], 2, sd)
+
+mtest <- apply(test[,-c(1)], 2, mean)
+sdtest <- apply(test[,-c(1)], 2, sd)
+
+```
+
+We can take these and add them nicely to a table:
+
+Variable | mean (s.d.) in training | mean (s.d.) in test
+---------|-------------------------|--------------------
+`r names(test)[3]` | `r round(mtr[1], 3)` (`r round(sdtr[1], 3)`) | `r round(mtest[1], 3)` (`r round(sdtest[1], 3)`)
+`r names(test)[4]` | `r round(mtr[2],3)` (`r round(sdtr[2],3)`) | `r round(mtest[2],3)` (`r round(sdtest[2],3)`)
+`r names(test)[5]` | `r round(mtr[3],3)` (`r round(sdtr[3],3)`) | `r round(mtest[3],3)` (`r round(sdtest[3],3)`)
+`r names(test)[6]` | `r round(mtr[4],3)` (`r round(sdtr[4],3)`) | `r round(mtest[4],3)` (`r round(sdtest[4],3)`)
+`r names(test)[7]` | `r round(mtr[5],3)` (`r round(sdtr[5],3)`) | `r round(mtest[5],3)` (`r round(sdtest[5],3)`)
+`r names(test)[8]` | `r round(mtr[6],3)` (`r round(sdtr[6],3)`) | `r round(mtest[6],3)` (`r round(sdtest[6],3)`)
+`r names(test)[9]` | `r round(mtr[7],3)` (`r round(sdtr[7],3)`) | `r round(mtest[7],3)` (`r round(sdtest[7],3)`)
+`r names(test)[10]` | `r round(mtr[8],3)` (`r round(sdtr[8],3)`) | `r round(mtest[8],3)` (`r round(sdtest[8],3)`)
+`r names(test)[11]` | `r round(mtr[9],3)` (`r round(sdtr[9],3)`) | `r round(mtest[9],3)` (`r round(sdtest[9],3)`)
+`r names(test)[12]` | `r round(mtr[10],3)` (`r round(sdtr[10],3)`) | `r round(mtest[10],3)` (`r round(sdtest[10],3)`)
+
+Table: Summary statistics in training and test dataset, each of size 373.
+
+
+```{r}
+full <- lm(BTC_Price ~ ., data=train[,-c(1)])
+summary(full)
+
+# check conditions for checking model assumptions
+pairs(train[,-c(1,2,3,4,5,6,7)])
+plot(train$BTC_Price ~ fitted(full), main="Y vs Fitted", xlab="Fitted", ylab="BTC_Price")
+lines(lowess(train$BTC_Price ~ fitted(full)), lty=2)
+abline(a = 0, b = 1)
+```
+
+```{r}
+# check model assumptions
+par(mfrow=c(2,2))
+plot(rstandard(full)~fitted(full), xlab="fitted", ylab="Residuals")
+for(i in c(2:10)){
+  plot(rstandard(full)~train[,i], xlab=names(train)[i], ylab="Residuals")
+}
+
+qqnorm(rstandard(full))
+qqline(rstandard(full))
+
+# try transformations
+library(car)
+p <- powerTransform(cbind(bit[,-c(1)]))
+summary(p)
+
+vif(full)
+```
+
+```{r}
+# so transform just the response and Driving Accuracy in both the train and test
+train$logBTC_Price <- log(train$BTC_Price)
+train$logETH._Price <- log(train$ETH._Price)
+train$logRipple_Price <- log(train$Ripple_Price)
+train$logMiner.s_Revenue <- log(train$Miner.s_Revenue)
+train$logGold_Price <- log(train$Gold_Price)
+train$logMSCI_World <- log(train$MSCI_World)
+train$logAverage_Block_Size <- log(train$Average_Block_Size)
+
+test$logBTC_Price <- log(test$BTC_Price)
+test$logETH._Price <- log(test$ETH._Price)
+test$logRipple_Price <- log(test$Ripple_Price)
+test$logMiner.s_Revenue <- log(test$Miner.s_Revenue)
+test$logGold_Price <- log(test$Gold_Price)
+test$logMSCI_World <- log(test$MSCI_World)
+test$logAverage_Block_Size <- log(test$Average_Block_Size)
+
+#construct the transformed model and check assumptions
+full2 <- lm(logBTC_Price ~ ., data=train[,-c(1,2,3,4,5,8,9,10)])
+summary(full2)
+pairs(train[,-c(1,2,3,4,5,6)])
+plot(train$BTC_Price ~ fitted(full2), main="Y vs Fitted", xlab="Fitted", ylab="BTC_Price")
+lines(lowess(train$BTC_Price ~ fitted(full2)), lty=2)
+abline(a = 0, b = 1)
+
+par(mfrow=c(2,2))
+plot(rstandard(full2)~fitted(full2), xlab="fitted", ylab="Residuals")
+for(i in c(2:10)){
+  plot(rstandard(full2)~train[,i], xlab=names(train)[i], ylab="Residuals")
+}
+
+qqnorm(rstandard(full2))
+qqline(rstandard(full2))
+
+
+vif(full2)
+```
+
+
+```{r model3}
+mod3 <- lm(logBTC_Price ~ logETH._Price + logRipple_Price + logMiner.s_Revenue + logGold_Price + logMSCI_World + logAverage_Block_Size, data=train)
+summary(mod3)
+
+vif(mod3)
+which(cooks.distance(mod3)>qf(0.5, 7, 373-7))
+which(abs(dffits(mod3)) > 2*sqrt(8/373))
+par(mfrow=c(1,1))
+plot(rstandard(mod3)~train$logETH._Price)
+plot(rstandard(mod3)~train$logRipple_Price)
+plot(rstandard(mod3)~train$logMiner.s_Revenue)
+plot(rstandard(mod3)~train$logGold_Price)
+plot(rstandard(mod3)~train$logMSCI_World)
+plot(rstandard(mod3)~train$Average_Block_Size)
+qqnorm(rstandard(mod3))
+qqline(rstandard(mod3))
+
+
+```
+```{r model4}
+mod4 <- lm(logBTC_Price ~ logGold_Price + logMiner.s_Revenue+ logAverage_Block_Size, data=train)
+summary(mod4)
+
+vif(mod4)
+which(cooks.distance(mod4)>qf(0.5, 4, 373-4))
+which(abs(dffits(mod4)) > 2*sqrt(4/373))
+par(mfrow=c(1,1))
+plot(rstandard(mod4)~train$logMiner.s_Revenue)
+plot(rstandard(mod4)~train$logGold_Price)
+plot(rstandard(mod4)~train$Average_Block_Size)
+qqnorm(rstandard(mod4))
+qqline(rstandard(mod4))
+
+```
+
+
+```{r}
+mod5 <- lm(logBTC_Price ~ Transaction_Vol+ logMiner.s_Revenue + Exchange_Vol + logGold_Price + logAverage_Block_Size, data=train)
+summary(mod5)
+
+vif(mod5)
+which(cooks.distance(mod5)>qf(0.5, 6, 373-6))
+which(abs(dffits(mod5)) > 2*sqrt(6/373))
+par(mfrow=c(1,1))
+plot(rstandard(mod5)~train$Transaction_Vol)
+plot(rstandard(mod5)~train$logMiner.s_Revenue)
+plot(rstandard(mod5)~train$Exchange_Vol)
+plot(rstandard(mod5)~train$logGold_Price)
+plot(rstandard(mod5)~train$Average_Block_Size)
+qqnorm(rstandard(mod5))
+qqline(rstandard(mod5))
+
+vif(mod5)
+```
+
+```{r}
+full2test <- lm(logBTC_Price ~ ., data=test[,-c(1,2,3,4,5,8,9,10)])
+mod3test <- lm(logBTC_Price ~ logETH._Price + logRipple_Price + logMiner.s_Revenue + logGold_Price + logMSCI_World + logAverage_Block_Size, data=test)
+mod4test <- lm(logBTC_Price ~ logGold_Price + logMiner.s_Revenue + logAverage_Block_Size, data=test)
+mod5test<-lm(logBTC_Price ~ Transaction_Vol+ logMiner.s_Revenue + Exchange_Vol + logGold_Price + logAverage_Block_Size, data=test)
+```
+
+```{r}
+# compare full2 's
+summary(full2)
+summary(full2test)
+vif(full2test)
+which(cooks.distance(mod3test)>qf(0.5, 9, 373-9))
+which(abs(dffits(mod3test)) > 2*sqrt(9/373))
+par(mfrow=c(1,1))
+plot(rstandard(mod3)~test$logETH._Price)
+plot(rstandard(mod3)~test$logRipple_Price)
+plot(rstandard(mod3)~test$logMiner.s_Revenue)
+plot(rstandard(mod3)~test$logGold_Price)
+plot(rstandard(mod3)~test$logMSCI_World)
+plot(rstandard(mod3)~test$logAverage_Block_Size)
+plot(rstandard(mod3)~test$Exchange_Vol)
+plot(rstandard(mod3)~test$Transaction_Vol)
+
+qqnorm(rstandard(full2test))
+qqline(rstandard(full2test))
+```
+
+
+```{r}
+# compare model 3's
+summary(mod3)
+summary(mod3test)
+vif(mod3test)
+which(cooks.distance(mod3test)>qf(0.5, 7, 373-7))
+which(abs(dffits(mod3test)) > 2*sqrt(7/373))
+par(mfrow=c(1,1))
+plot(rstandard(mod3)~test$logETH._Price)
+plot(rstandard(mod3)~test$logRipple_Price)
+plot(rstandard(mod3)~test$logMiner.s_Revenue)
+plot(rstandard(mod3)~test$logGold_Price)
+plot(rstandard(mod3)~test$logMSCI_World)
+plot(rstandard(mod3)~test$Average_Block_Size)
+qqnorm(rstandard(mod3test))
+qqline(rstandard(mod3test))
+```
+
+
+```{r}
+# compare model 4's
+summary(mod4)
+summary(mod4test)
+vif(mod4test)
+which(cooks.distance(mod4test)>qf(0.5, 4, 373-4))
+which(abs(dffits(mod4test)) > 2*sqrt(4/373))
+par(mfrow=c(1,1))
+plot(rstandard(mod4)~test$logMiner.s_Revenue)
+plot(rstandard(mod4)~test$logGold_Price)
+plot(rstandard(mod4)~test$Average_Block_Size)
+qqnorm(rstandard(mod4test))
+qqline(rstandard(mod4test))
+```
+```{r}
+# compare model 5's
+summary(mod5)
+summary(mod5test)
+vif(mod5test)
+which(cooks.distance(mod5test)>qf(0.5, 7, 373-7))
+which(abs(dffits(mod5test)) > 2*sqrt(7/373))
+par(mfrow=c(1,1))
+plot(rstandard(mod5)~test$Transaction_Vol)
+plot(rstandard(mod5)~test$logMiner.s_Revenue)
+plot(rstandard(mod5)~test$Exchange_Vol)
+plot(rstandard(mod5)~test$logGold_Price)
+plot(rstandard(mod5)~test$Average_Block_Size)
+qqnorm(rstandard(mod5test))
+qqline(rstandard(mod5test))
+
+```
+
+
+
+
